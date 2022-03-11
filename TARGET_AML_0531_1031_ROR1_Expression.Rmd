@@ -1,0 +1,192 @@
+---
+title: "ROR1 in Adult and Pediatric AML"
+author: "Jenny Smith"
+date: "April 6, 2018"
+output: html_document
+---
+
+
+```{r setup}
+library(knitr)
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=50),tidy=TRUE, fig.align='center', fig.height = 8, fig.width = 10)
+knitr::opts_knit$set(root.dir = '/fh/fast/meshinchi_s/workingDir/TARGET/AML_TARGET/RNA/mRNAseq/analysis/2018.04.05_ROR1_Expression/')
+```
+
+
+
+```{r message=FALSE}
+library(dplyr)
+library(magrittr)
+library(ggplot2)
+library(stringr)
+library(reshape2)
+library(tidyr)
+library(tibble)
+library(ggpubr)
+getwd()
+```
+
+
+```{r}
+source("~/scripts/RNAseq_Analysis/MSLN_waterfallplots/Waterfall_Barplot_Function_2017.05.22.r")
+source("~/scripts/RNAseq_Analysis/DifferentialExpn_PathwayAnalysis/ggplot_Themes_Function.r")
+```
+
+
+#Read in the CDEs 
+
+```{r}
+AML1031 <- read.csv("~/reference_mapping-files/TARGET_AML_1031_CDE_cleaned_3.20.18.csv",
+                    stringsAsFactors = FALSE, row.names = 1)
+
+head(AML1031[,1:5])
+# dim(AML1031)
+```
+
+
+```{r}
+AML0531 <- read.csv("~/reference_mapping-files/TARGET_AML_current_asof_june30_2016_UPDATED_CLEAN_4.5.18.csv", 
+                    stringsAsFactors = FALSE)
+
+head(AML0531[,1:5])
+# dim(AML0531) #1000 by 90
+```
+
+
+
+
+#Read in the expression data 
+
+```{r}
+LD.0531 <- read.csv("~/RNA_seq_Analysis/0000.00.03_Expression_Matrices/TARGET_AML_AAML0531_dupGenesRemoved_TPM.csv", stringsAsFactors = FALSE, row.names = 1)
+
+head(LD.0531[,1:5])
+# dim(LD.0531) #494 samples
+```
+
+```{r}
+HD.0531 <- read.csv("~/RNA_seq_Analysis/0000.00.03_Expression_Matrices/TARGET_AML_DxSamples_dupGenesRemoved_TPM_Aug2014.csv",
+                    stringsAsFactors = FALSE, row.names = 1)
+
+colnames(HD.0531) <- str_split_fixed(colnames(HD.0531), "\\.", n=5)[,3]
+
+head(HD.0531[,1:5])
+# dim(HD.0531) 51,482 genes by 160 samples
+```
+
+
+```{r}
+HD.1031 <- read.csv("~/RNA_seq_Analysis/0000.00.03_Expression_Matrices/TARGET_AML_AAML1031_dupGenesRemoved_TPM.csv", 
+                    stringsAsFactors = FALSE, row.names = 1)
+
+head(HD.1031[,1:5])
+# dim(HD.1031) #1111 samples
+```
+
+
+
+```{r}
+TCGA_Targ <- get(load("~/RNA_seq_Analysis/0000.00.03_Expression_Matrices/TcgaTargetGtex_NormBlood_AML_rsem_geneSymbol_dupGenesRemoved_tpm.RData"))
+
+head(TCGA_Targ[,1:5])
+# dim(TCGA_Targ) 58,531 and 738  samples
+```
+
+```{r}
+grep("ROR1", rownames(LD.0531), value=TRUE)
+```
+
+
+#Waterfall plots with ROR1
+
+```{r}
+# tiff("ROR1_LowDepth_0531_TPM_waterfallplot.tiff", height = 5, width = 8, units = "in", res=600)
+waterfallPlot(LD.0531, "ROR1", unit="TPM") + 
+  scale_fill_brewer(palette = "Set1") + 
+  labs(title="ROR1 RNA-Seq Expression AAML0531") + 
+  ylim(0,8)
+# dev.off()
+```
+
+
+```{r}
+quantile(as.numeric(LD.0531["ROR1",]))
+```
+
+```{r}
+# tiff("ROR1_1031_TPM_waterfallplot.tiff", height = 5, width = 8, units = "in", res=600)
+waterfallPlot(HD.1031, "ROR1", unit="TPM") +
+  ylim(0,8) + 
+  scale_fill_brewer(palette = "Set1") + 
+  labs(title="ROR1 RNA-Seq Expression AAML1031") 
+# dev.off()
+```
+
+```{r}
+quantile(as.numeric(HD.1031["ROR1",]))
+# log2 <- log2(as.numeric(HD.1031["ROR1",])+1)
+# quantile(log2)
+```
+
+
+```{r}
+pheno.toil <- ifelse(grepl("GTEX", colnames(subset)), "Normal.WholeBlood", 
+                     ifelse(grepl("TARGET", colnames(subset)), "TARGET.AML", "TCGA.AML")) %>%
+  set_names(colnames(subset))
+
+table(pheno.toil)
+```
+
+```{r}
+
+TAR.TCGA.GTEX <- waterfallPlot(expnMatrix = subset,geneName = "ROR1",phenoVector =  pheno.toil, unit="TPM", returnData = TRUE) 
+
+# tiff("ROR1_TCGA_TPM_waterfallplot.tiff", height = 5, width = 8, units = "in", res=600)
+TAR.TCGA.GTEX$Plot +  ylim(0,8) +
+  scale_fill_brewer(palette = "Dark2") +
+  labs(title="ROR1 RNA-Seq Expression TARGET, TCGA, and GTEX")
+# dev.off()
+```
+
+```{r}
+TAR.TCGA.GTEX$Data %>% 
+  group_by(Status) %>%
+  summarise_at(vars(val), funs(mean,median,max,min))
+  
+```
+
+
+
+#Boxplots with TCGA and TARGET  
+
+```{r}
+forDist <- subset %>%
+  rownames_to_column("gene") %>%
+  filter(gene == "ROR1") %>%
+  select(-gene) %>%
+  gather(var, value) %>%
+  mutate(log2.TPM=log2(value+1)) %>%
+  mutate(Group=ifelse(grepl("GTEX", var), "Normal.WholeBlood", 
+                     ifelse(grepl("TARGET", var), "TARGET.AML", "TCGA.AML"))) %>%
+  mutate(Group=factor(Group, levels=c("Normal.WholeBlood","TARGET.AML", "TCGA.AML" )))
+  
+
+# forDist
+table(forDist$Group)
+```
+
+
+```{r}
+comparisons <- list(c("Normal.WholeBlood","TARGET.AML"),
+                    c("TARGET.AML", "TCGA.AML" ),
+                    c("Normal.WholeBlood","TCGA.AML" ))
+
+ggboxplot(forDist, x="Group", y="log2.TPM", color="Group", palette="jco") +
+  stat_compare_means(comparisons = comparisons) +
+  ylim(0,10) +
+  stat_compare_means(label.y = 9.5)
+
+```
+
+
+
